@@ -1,0 +1,8 @@
+## Interface: 40400
+## Title: |cFF8000FFLith|rStable
+## Notes: For when choosing a mount is harder than downing Deathwing. Let RNG be your Dragon Soul!
+## Author: Lith
+## Version: 1.0
+
+LithStable.lua
+Bindings.xml

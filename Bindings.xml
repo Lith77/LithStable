@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="Summon Random Favorite Mount" runOnUp="true" category="BINDING_HEADER_LITHSTABLE">
+        LithStable_SummonRandomMount()
+    </Binding>
+</Bindings>
