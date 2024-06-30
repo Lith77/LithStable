@@ -1,10 +1,10 @@
 LithStable, Summons a random favorite mount
 
 V1.0.2:
-	- Added check to see if required flight skill is learned, including Cold Weather Flying and Flight Master's License, if not summons one of the favorite ground mounts (on Summon Auto keybind, Mount Journal button or /ls).
-	- Added two more keybinds for forsing a random favorite flying or ground mount.
-	- Changed the icons in the Mount Journal
-	- Moved the icon for toggle favorite, now placed next to the summon random mount (auto) button in the Mount Journal
+	- Added a check to see if the required flight skill is learned, including Cold Weather Flying and Flight Master's License. If not, it summons one of the favorite ground mounts (on Summon Auto keybind, Mount Journal button, or /ls).
+	- Added two more keybindings for those who want to have one for flying and one for ground mounts.
+	- Changed the icons in the Mount Journal.
+	- Moved the icon for toggle favorite, now placed next to the summon random mount (auto) button in the Mount Journal.
 
 V1.0.1:
 	- User-Friendly Interface: LithStable integrates seamlessly with the existing Mount Journal UI, adding two new buttons for summoning a random mount and toggling favorites.
