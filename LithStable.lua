@@ -1,7 +1,7 @@
 local addonName, LithStable = ...
 
 LithStable.DebugPrintFavorites = function()
-    print("Lith Stable: Favorite Mounts Debug List")
+    print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Favorite Mounts Debug List"))
     print("---------------------------------------")
     for i = 1, C_MountJournal.GetNumMounts() do
         local name, spellID, _, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(i)
@@ -18,6 +18,31 @@ end
 
 -- Helper Functions
 
+-- Improved spell cache
+local spellCache = {}
+local function IsSpellKnownCached(spellID)
+    if spellCache[spellID] == nil then
+        spellCache[spellID] = IsSpellKnown(spellID)
+    end
+    return spellCache[spellID]
+end
+
+-- Function to update spell cache
+local function UpdateSpellCache(newSpellID)
+    spellCache[newSpellID] = true
+    -- Also update related flying spells
+    local flyingSpells = {34090, 34091, 90265, 90267, 54197}
+    for _, spellID in ipairs(flyingSpells) do
+        spellCache[spellID] = IsSpellKnown(spellID)
+    end
+end
+
+-- Event frame for spell learning
+local spellLearnFrame = CreateFrame("Frame")
+spellLearnFrame:RegisterEvent("LEARNED_SPELL_IN_TAB")
+spellLearnFrame:SetScript("OnEvent", function(self, event, newSpellID)
+    UpdateSpellCache(newSpellID)
+end)
 
 local function GetContinentName(mapID)
     local mapInfo = C_Map.GetMapInfo(mapID)
@@ -36,15 +61,15 @@ local function CanFlyInCurrentZone()
     --print("You are on the continent: " .. continentName)
 
     -- Check for any flying skill
-    if not IsSpellKnown(34090) and not IsSpellKnown(34091) and not IsSpellKnown(90265) then
+    if not IsSpellKnownCached(34090) and not IsSpellKnownCached(34091) and not IsSpellKnownCached(90265) then
         return false
     end
 
     -- Check for Flight Master's License (required for Eastern Kingdoms, Kalimdor, and Deepholm)
-    local flightMastersLicense = IsSpellKnown(90267)
+    local flightMastersLicense = IsSpellKnownCached(90267)
 
     -- Check for Cold Weather Flying (required for Northrend)
-    local coldWeatherFlying = IsSpellKnown(54197)
+    local coldWeatherFlying = IsSpellKnownCached(54197)
 
     if continentName == "Northrend" then
         return coldWeatherFlying
@@ -60,11 +85,26 @@ local function CanFlyInCurrentZone()
         return true
     end
 end
+-- Improved random number generation
+local function GetTrueRandomIndex(max)
+    -- Get the current time in seconds and microseconds
+    local currentTime = GetTime()
+    local seconds = math.floor(currentTime)
+    local microseconds = math.floor((currentTime - seconds) * 1000000)
+    
+    -- Use the microseconds as a seed for additional randomness
+    for i = 1, microseconds % 10 + 1 do
+        random()
+    end
+    
+    -- Generate a random index
+    return random(1, max)
+end
 
 -- Main Functions
-LithStable.SummonRandomMount = function(mountType)
+LithStable.SummonRandomMount = function(rMountType, forceType)
     if InCombatLockdown() then
-        print("Cannot summon a mount while in combat.")
+        print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Cannot summon a mount while in combat."))
         return
     end
 
@@ -73,31 +113,54 @@ LithStable.SummonRandomMount = function(mountType)
         flying = {}
     }
     local canFly = CanFlyInCurrentZone()
+    local unusableFavorites = {}
 
     for i = 1, C_MountJournal.GetNumMounts() do
-        local name, spellID, _, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(i)
-        local _, _, _, _, mountType = C_MountJournal.GetMountInfoExtraByID(i)
-        
-        if isCollected and isUsable and isFavorite and not shouldHideOnChar then
-            if mountType == 248 or mountType == 247 then  -- 248 = Flying, 247 = Flying/Ground
-                table.insert(favoriteMounts.flying, i)
-            else
-                table.insert(favoriteMounts.ground, i)
+        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected, mountID, isForDragonriding = C_MountJournal.GetMountInfoByID(i)
+        if mountID then
+            local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
+            local localUsable, reason = C_MountJournal.GetMountUsabilityByID(mountID, false)
+            --print(name, mountID)
+            if isCollected and isFavorite and not shouldHideOnChar then
+                if isUsable and localUsable then
+                    if mountTypeID == 248 or mountTypeID == 247 or isForDragonriding then  -- 248 = Flying, 247 = Flying/Ground
+                        table.insert(favoriteMounts.flying, mountID)
+                    else
+                        table.insert(favoriteMounts.ground, mountID)
+                    end
+                elseif localUsable then
+                    --print(name, "C_MountJournal.GetMountUsabilityByID:",C_MountJournal.GetMountUsabilityByID(mountID, false))
+                    table.insert(unusableFavorites, {name = name, reason = reason})
+                end
             end
         end
     end
 
+    -- Print warnings for favorite mounts the player can't use
+    if #unusableFavorites > 0 then
+        print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Warning: Some of your favorite mounts are not usable:"))
+        for _, mount in ipairs(unusableFavorites) do
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s (%s)', 'Lith', 'Stable:', mount.name, mount.reason))
+        end
+    end
+
     local mountList
-    if mountType == "flying" and canFly then
-        mountList = favoriteMounts.flying
-    elseif mountType == "ground" or (mountType ~= "flying" and not canFly) then
+    if rMountType == "flying" and (canFly or forceType) then
+        if #favoriteMounts.flying > 0 then
+            mountList = favoriteMounts.flying
+        else
+            mountList = favoriteMounts.ground
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "No flying mounts available. Summoning a ground mount instead"))
+        end
+    elseif rMountType == "ground" or (rMountType ~= "flying" and not canFly and not forceType) then
         mountList = favoriteMounts.ground
     else
         mountList = canFly and (#favoriteMounts.flying > 0 and favoriteMounts.flying or favoriteMounts.ground) or favoriteMounts.ground
     end
 
     if #mountList > 0 then
-        local randomIndex = math.random(#mountList)
+        --local randomIndex = math.random(#mountList)
+        local randomIndex = GetTrueRandomIndex(#mountList)
         C_MountJournal.SummonByID(mountList[randomIndex])
     else
         print("You have no suitable favorite mounts available.")
@@ -131,9 +194,10 @@ LithStable.ToggleFavorite = function()
             
             -- Force the UI to update
             MountJournal_UpdateMountList()
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s is now %s favorite', 'Lith', 'Stable:', creatureName, newFavoriteStatus and "a" or "not a"))
         end
     else
-        print("Could not toggle favorite status for this mount.")
+        print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Could not toggle favorite status for this mount."))
     end
 end
 
@@ -204,15 +268,15 @@ end)
 
 -- Functions for keybindings
 local function SummonRandomAutoMount()
-    LithStable.SummonRandomMount()
+    LithStable.SummonRandomMount(nil, false)
 end
 
 local function SummonRandomFlyingMount()
-    LithStable.SummonRandomMount("flying")
+    LithStable.SummonRandomMount("flying", true)
 end
 
 local function SummonRandomGroundMount()
-    LithStable.SummonRandomMount("ground")
+    LithStable.SummonRandomMount("ground", true)
 end
 
 -- Make these functions global for keybindings
