@@ -1,8 +1,25 @@
-## Interface: 40400
+## Interface: 40401
 ## Title: |cFF8000FFLith|rStable
 ## Notes: For when choosing a mount is harder than downing Deathwing. Let RNG be your Dragon Soul!
 ## Author: Lith
-## Version: 1.0.3
+## Version: 1.0.4
+## SavedVariables: LithStableDB
 
+# Libraries (embedded)
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Libs\AceAddon-3.0\AceAddon-3.0.xml
+Libs\AceConsole-3.0\AceConsole-3.0.xml
+Libs\AceEvent-3.0\AceEvent-3.0.xml
+Libs\AceDB-3.0\AceDB-3.0.xml
+Libs\AceConfig-3.0\AceConfig-3.0.xml
+# Libs\AceConfigDialog-3.0\AceConfigDialog-3.0.xml
+Libs\AceGUI-3.0\AceGUI-3.0.xml
+
+# Addon files
+helper.lua
+Debug.lua
+Settings.lua
 LithStable.lua
 Bindings.xml
+UI.lua

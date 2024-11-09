@@ -1,4 +1,9 @@
 LithStable, Summons a random favorite mount
+V1.0.4:
+	- Added options that are saved shared or per character
+	- Addon now keeps track of last used flying and ground mount.
+	- Option to dismount only if already mounted, if that is checked you need to use the command twice to get a new mount.
+	- Option to ignore the functionality that removes the last used mount from the next random summon.
 V1.0.3:
 	- Tweaked the code for choosing the random mount
 	- Fixed the code so the "Summon Flying mount" force a flying to be summoned if possible, otherwise a random ground mounts is used.

@@ -1,142 +1,107 @@
 local addonName, LithStable = ...
+LithStable = LibStub("AceAddon-3.0"):NewAddon(LithStable, addonName, "AceConsole-3.0", "AceEvent-3.0")
 
-LithStable.DebugPrintFavorites = function()
-    print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Favorite Mounts Debug List"))
-    print("---------------------------------------")
-    for i = 1, C_MountJournal.GetNumMounts() do
-        local name, spellID, _, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(i)
-        local _, _, _, _, mountType = C_MountJournal.GetMountInfoExtraByID(i)
-        
-        if isFavorite then
-            local mountTypeStr = (mountType == 248 or mountType == 247) and "Flying" or "Ground"
-            local statusStr = isCollected and isUsable and not shouldHideOnChar and "Usable" or "Not Usable"
-            print(string.format("%s (SpellID: %d): %s, %s", name, spellID, mountTypeStr, statusStr))
-        end
+-- State variables
+LithStable.lastFlyingMount = nil
+LithStable.lastGroundMount = nil
+LithStable.pendingMount = nil
+LithStable.pendingMountType = nil
+
+function LithStable:OnInitialize()
+    -- Initialize settings
+    self:InitializeSettings()
+
+    -- Load last mount states from character saved variables
+    self.lastFlyingMount = self.db.char.state.lastFlyingMount
+    self.lastGroundMount = self.db.char.state.lastGroundMount
+
+    -- Register slash commands
+    self:RegisterChatCommand("ls", "HandleSlashCommand")
+    self:RegisterChatCommand("lithstable", "HandleSlashCommand")
+    
+    -- Set up keybinding header
+    _G.BINDING_HEADER_LITHSTABLE = format('|cFF8000FF%s|r|cffffffff%s|r ', 'Lith', 'Stable: Your random mounts')
+    _G["BINDING_NAME_LITHSTABLERANDOMAUTOMOUNT"] = "Summon Random Favorite Mount (Auto)"
+    _G["BINDING_NAME_LITHSTABLERANDOMFLYINGMOUNT"] = "Summon Random Favorite Flying Mount"
+    _G["BINDING_NAME_LITHSTABLERANDOMGROUNDMOUNT"] = "Summon Random Favorite Ground Mount"
+
+    -- Set up keybinding functions
+    _G["LithStable_SummonRandomAutoMount"] = function()
+        self:SummonRandomMount(nil, false)
     end
-    print("---------------------------------------")
+    
+    _G["LithStable_SummonRandomFlyingMount"] = function()
+        self:SummonRandomMount("flying", true)
+    end
+    
+    _G["LithStable_SummonRandomGroundMount"] = function()
+        self:SummonRandomMount("ground", true)
+    end
 end
 
--- Helper Functions
-
--- Improved spell cache
-local spellCache = {}
-local function IsSpellKnownCached(spellID)
-    if spellCache[spellID] == nil then
-        spellCache[spellID] = IsSpellKnown(spellID)
-    end
-    return spellCache[spellID]
-end
-
--- Function to update spell cache
-local function UpdateSpellCache(newSpellID)
-    spellCache[newSpellID] = true
-    -- Also update related flying spells
-    local flyingSpells = {34090, 34091, 90265, 90267, 54197}
-    for _, spellID in ipairs(flyingSpells) do
-        spellCache[spellID] = IsSpellKnown(spellID)
-    end
-end
-
--- Event frame for spell learning
-local spellLearnFrame = CreateFrame("Frame")
-spellLearnFrame:RegisterEvent("LEARNED_SPELL_IN_TAB")
-spellLearnFrame:SetScript("OnEvent", function(self, event, newSpellID)
-    UpdateSpellCache(newSpellID)
-end)
-
-local function GetContinentName(mapID)
-    local mapInfo = C_Map.GetMapInfo(mapID)
-    while mapInfo and mapInfo.mapType > 2 do -- Map types: 0=Cosmic, 1=World, 2=Continent, 3=Zone, etc.
-        mapInfo = C_Map.GetMapInfo(mapInfo.parentMapID)
-    end
-    return mapInfo and mapInfo.name or "Unknown"
-end
-
-local function CanFlyInCurrentZone()
-    if not IsFlyableArea() then return false end
-
-    local mapID = C_Map.GetBestMapForUnit("player")
-    local continentName = GetContinentName(mapID)
-    if not continentName then return false end
-    --print("You are on the continent: " .. continentName)
-
-    -- Check for any flying skill
-    if not IsSpellKnownCached(34090) and not IsSpellKnownCached(34091) and not IsSpellKnownCached(90265) then
-        return false
-    end
-
-    -- Check for Flight Master's License (required for Eastern Kingdoms, Kalimdor, and Deepholm)
-    local flightMastersLicense = IsSpellKnownCached(90267)
-
-    -- Check for Cold Weather Flying (required for Northrend)
-    local coldWeatherFlying = IsSpellKnownCached(54197)
-
-    if continentName == "Northrend" then
-        return coldWeatherFlying
-    elseif continentName == "Eastern Kingdoms" or continentName == "Kalimdor" or continentName == "Deepholm" then
-        --[[
-        if not flightMastersLicense then
-            print(string.format("You need to learn Flight Master's License to fly in %s. Trying to summon a ground mount.", continentName))
-        end
-        ]]
-        return flightMastersLicense
+function LithStable:HandleSlashCommand(msg)
+    local command = string.lower(msg)
+    if command == "help" then
+        self:printHelp()
+    elseif command == "debug" then
+        self:DebugPrintFavorites()
+    elseif command == "last" then
+        self:DebugPrintLastMounts()
+    elseif command == "config" or command == "options" then
+        self:OpenConfig()
+    elseif command == "flying" then
+        self:SummonRandomMount("flying", true)
+    elseif command == "ground" then
+        self:SummonRandomMount("ground", true)
     else
-        -- For other continents, assume flying is allowed if the area is flyable
-        return true
+        self:SummonRandomMount(nil, false)
     end
-end
--- Improved random number generation
-local function GetTrueRandomIndex(max)
-    -- Get the current time in seconds and microseconds
-    local currentTime = GetTime()
-    local seconds = math.floor(currentTime)
-    local microseconds = math.floor((currentTime - seconds) * 1000000)
-    
-    -- Use the microseconds as a seed for additional randomness
-    for i = 1, microseconds % 10 + 1 do
-        random()
-    end
-    
-    -- Generate a random index
-    return random(1, max)
 end
 
--- Main Functions
-LithStable.SummonRandomMount = function(rMountType, forceType)
+-- Main mount summoning function
+function LithStable:SummonRandomMount(rMountType, forceType)
+    if not self:CheckCooldown() then
+        return
+    end
+
     if InCombatLockdown() then
         print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Cannot summon a mount while in combat."))
         return
+    end
+
+    if IsMounted() then
+        Dismount()
+        if self:ShouldDismountOnly() then
+            --print(format("isMounted %s, Dismount only %s", tostring(true), tostring(true)))
+            return
+        end
     end
 
     local favoriteMounts = {
         ground = {},
         flying = {}
     }
-    local canFly = CanFlyInCurrentZone()
+    local canFly = self:CanFlyInCurrentZone()
     local unusableFavorites = {}
 
     for i = 1, C_MountJournal.GetNumMounts() do
-        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected, mountID, isForDragonriding = C_MountJournal.GetMountInfoByID(i)
+        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected, mountID = C_MountJournal.GetMountInfoByID(i)
         if mountID then
-            local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
             local localUsable, reason = C_MountJournal.GetMountUsabilityByID(mountID, false)
-            --print(name, mountID)
             if isCollected and isFavorite and not shouldHideOnChar then
                 if isUsable and localUsable then
-                    if mountTypeID == 248 or mountTypeID == 247 or isForDragonriding then  -- 248 = Flying, 247 = Flying/Ground
+                    if self:IsFlyingMount(mountID) then
                         table.insert(favoriteMounts.flying, mountID)
                     else
                         table.insert(favoriteMounts.ground, mountID)
                     end
                 elseif localUsable then
-                    --print(name, "C_MountJournal.GetMountUsabilityByID:",C_MountJournal.GetMountUsabilityByID(mountID, false))
                     table.insert(unusableFavorites, {name = name, reason = reason})
                 end
             end
         end
     end
 
-    -- Print warnings for favorite mounts the player can't use
     if #unusableFavorites > 0 then
         print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Warning: Some of your favorite mounts are not usable:"))
         for _, mount in ipairs(unusableFavorites) do
@@ -145,9 +110,11 @@ LithStable.SummonRandomMount = function(rMountType, forceType)
     end
 
     local mountList
+    local isFlying = false
     if rMountType == "flying" and (canFly or forceType) then
         if #favoriteMounts.flying > 0 then
             mountList = favoriteMounts.flying
+            isFlying = true
         else
             mountList = favoriteMounts.ground
             print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "No flying mounts available. Summoning a ground mount instead"))
@@ -155,20 +122,40 @@ LithStable.SummonRandomMount = function(rMountType, forceType)
     elseif rMountType == "ground" or (rMountType ~= "flying" and not canFly and not forceType) then
         mountList = favoriteMounts.ground
     else
-        mountList = canFly and (#favoriteMounts.flying > 0 and favoriteMounts.flying or favoriteMounts.ground) or favoriteMounts.ground
+        if canFly and #favoriteMounts.flying > 0 then
+            mountList = favoriteMounts.flying
+            isFlying = true
+        else
+            mountList = favoriteMounts.ground
+        end
     end
 
     if #mountList > 0 then
-        --local randomIndex = math.random(#mountList)
-        local randomIndex = GetTrueRandomIndex(#mountList)
-        C_MountJournal.SummonByID(mountList[randomIndex])
+        local selectedMount, selectedIndex
+        if isFlying then
+            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("flying"), true)
+        else
+            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("ground"), false)
+        end
+        
+        local actualIsFlying = self:IsFlyingMount(selectedMount)
+        
+        self.pendingMount = selectedMount
+        self.pendingMountType = actualIsFlying and "flying" or "ground"
+        if selectedMount == self.lastFlyingMount or self.lastGroundMount then
+            C_Timer.After(0.3, function()
+                C_MountJournal.SummonByID(selectedMount)
+            end)
+            return
+        end
+        C_MountJournal.SummonByID(selectedMount)
     else
-        print("You have no suitable favorite mounts available.")
+        print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "You have no suitable favorite mounts available."))
     end
 end
 
-
-LithStable.ToggleFavorite = function()
+-- Toggle favorite function
+function LithStable:ToggleFavorite()
     local selectedMountIndex = MountJournal.selectedMountID
     if not selectedMountIndex then
         print("No mount selected")
@@ -178,7 +165,6 @@ LithStable.ToggleFavorite = function()
     local creatureName, spellID, icon, active, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected, mountID = C_MountJournal.GetMountInfoByID(selectedMountIndex)
     
     if mountID then
-        -- Find the mount's index in the displayed list
         local displayIndex
         for i = 1, C_MountJournal.GetNumDisplayedMounts() do
             local displayedMountID = select(12, C_MountJournal.GetDisplayedMountInfo(i))
@@ -192,7 +178,6 @@ LithStable.ToggleFavorite = function()
             local newFavoriteStatus = not isFavorite
             C_MountJournal.SetIsFavorite(displayIndex, newFavoriteStatus)
             
-            -- Force the UI to update
             MountJournal_UpdateMountList()
             print(format('|cFF8000FF%s|r|cffffffff%s|r %s is now %s favorite', 'Lith', 'Stable:', creatureName, newFavoriteStatus and "a" or "not a"))
         end
@@ -201,85 +186,56 @@ LithStable.ToggleFavorite = function()
     end
 end
 
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:SetScript("OnEvent", function(self, event, loadedAddonName)
-    if loadedAddonName == addonName then
-        -- Register slash commands
-        SLASH_LITHSTABLE1 = "/ls"
-        SLASH_LITHSTABLE2 = "/lithstable"
-        SlashCmdList["LITHSTABLE"] = function(msg)
-            if msg == "debug" then
-                LithStable.DebugPrintFavorites()
-            else
-                LithStable.SummonRandomMount()
+-- Event frame for spell learning
+local spellLearnFrame = CreateFrame("Frame")
+spellLearnFrame:RegisterEvent("LEARNED_SPELL_IN_TAB")
+spellLearnFrame:SetScript("OnEvent", function(self, event, newSpellID)
+    LithStable:UpdateSpellCache(newSpellID)
+end)
+
+local mountEventFrame = CreateFrame("Frame")
+mountEventFrame:RegisterEvent("MOUNT_JOURNAL_USABILITY_CHANGED")
+mountEventFrame:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED")
+mountEventFrame:RegisterEvent("COMPANION_UPDATE")
+
+mountEventFrame:SetScript("OnEvent", function(self, event)
+
+     if not LithStable.db or not LithStable.db.char then return end
+
+     if event == "COMPANION_UPDATE" then
+         -- Initialize favorites table if it doesn't exist
+        if not LithStable.db.char.favorites then
+            LithStable.db.char.favorites = {}
+        end
+        if not LithStable.db.char.favorites.mounts then
+            LithStable.db.char.favorites.mounts = {}
+        end
+        
+        for i = 1, C_MountJournal.GetNumMounts() do
+            local _, _, _, _, _, _, isFavorite, _, _, _, _, mountID = C_MountJournal.GetMountInfoByID(i)
+            if mountID then
+                LithStable.db.char.favorites.mounts[mountID] = isFavorite or nil
+            end
+        end
+    elseif event == "PLAYER_MOUNT_DISPLAY_CHANGED" then
+        if IsMounted() and LithStable.pendingMount then
+            local activeMount = nil
+            for i = 1, C_MountJournal.GetNumMounts() do
+                local _, _, _, isActive, _, _, _, _, _, _, _, mountID = C_MountJournal.GetMountInfoByID(i)
+                if isActive then
+                    activeMount = mountID
+                    break
+                end
+            end
+            
+            if activeMount == LithStable.pendingMount then
+                local isFlying = LithStable:IsFlyingMount(LithStable.pendingMount)
+                -- Always save to character specific state
+                LithStable:SetLastMount(isFlying and "flying" or "ground", LithStable.pendingMount)
             end
         end
         
-        -- Set up keybindings
-        _G.BINDING_HEADER_LITHSTABLE = format('|cFF8000FF%s|r|cffffffff%s|r ', 'Lith', 'Stable: Your random mounts')
-        _G["BINDING_NAME_LITHSTABLERANDOMAUTOMOUNT"] = "Summon Random Favorite Mount (Auto)"
-        _G["BINDING_NAME_LITHSTABLERANDOMFLYINGMOUNT"] = "Summon Random Favorite Flying Mount"
-        _G["BINDING_NAME_LITHSTABLERANDOMGROUNDMOUNT"] = "Summon Random Favorite Ground Mount"
-    elseif loadedAddonName == "Blizzard_Collections" then
-        -- Random Favorite Mount Button
-        local randomButton = CreateFrame("Button", "LithStableRandomMountButton", MountJournal, "UIPanelButtonTemplate")
-        randomButton:SetSize(32, 32)
-        randomButton:SetPoint("TOPRIGHT", MountJournal, "TOPRIGHT", -7, -25)
-        
-        -- Set custom texture for the random mount button
-        local randomButtonTexture = randomButton:CreateTexture(nil, "ARTWORK")
-        randomButtonTexture:SetTexture("Interface\\AddOns\\LithStable\\images\\icon-summon.tga")
-        randomButtonTexture:SetAllPoints(randomButton)
-        randomButton:SetNormalTexture(randomButtonTexture)
-        
-        randomButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        randomButton:SetScript("OnClick", LithStable.SummonRandomMount)
-        randomButton:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Send the stable boy to get you one of your favorite mounts.")
-            GameTooltip:Show()
-        end)
-        randomButton:SetScript("OnLeave", function(self)
-            GameTooltip:Hide()
-        end)
-        -- Toggle Favorite Button
-        local favoriteButton = CreateFrame("Button", "LithStableToggleFavoriteButton", MountJournal, "UIPanelButtonTemplate")
-        favoriteButton:SetSize(32, 32)
-        favoriteButton:SetPoint("TOPRIGHT", randomButton, "TOPLEFT", -4, 0)
-        -- Set custom texture for the favorite button
-        local favoriteButtonTexture = favoriteButton:CreateTexture(nil, "ARTWORK")
-        favoriteButtonTexture:SetTexture("Interface\\AddOns\\LithStable\\images\\icon-fav.tga")
-        favoriteButtonTexture:SetAllPoints(favoriteButton)
-        favoriteButton:SetNormalTexture(favoriteButtonTexture)
-        
-        favoriteButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        favoriteButton:SetScript("OnClick", LithStable.ToggleFavorite)
-        favoriteButton:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Toggle selected mount as favorite")
-            GameTooltip:Show()
-        end)
-        favoriteButton:SetScript("OnLeave", function(self)
-            GameTooltip:Hide()
-        end)
+        LithStable.pendingMount = nil
+        LithStable.pendingMountType = nil
     end
 end)
-
--- Functions for keybindings
-local function SummonRandomAutoMount()
-    LithStable.SummonRandomMount(nil, false)
-end
-
-local function SummonRandomFlyingMount()
-    LithStable.SummonRandomMount("flying", true)
-end
-
-local function SummonRandomGroundMount()
-    LithStable.SummonRandomMount("ground", true)
-end
-
--- Make these functions global for keybindings
-_G.LithStable_SummonRandomAutoMount = SummonRandomAutoMount
-_G.LithStable_SummonRandomFlyingMount = SummonRandomFlyingMount
-_G.LithStable_SummonRandomGroundMount = SummonRandomGroundMount
