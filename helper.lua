@@ -15,8 +15,15 @@ end
 -- Helper function to determine if a mount is a flying mount
 function LithStable:IsFlyingMount(mountID)
     local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
-    -- 248 = Pure Flying, 247 = Flying/Ground, 407 = Dragonriding
-    return mountTypeID == 248 or mountTypeID == 247 or mountTypeID == 407
+    -- 248 = Pure Flying, 247 = Flying/Ground, 402 = Dragonriding
+    return mountTypeID == 229 or mountTypeID == 238 or mountTypeID == 248 or mountTypeID == 247 or mountTypeID == 402 or mountTypeID == 436
+end
+
+-- Helper function to determine if a mount is a water mount
+function LithStable:IsAquaticMount(mountID)
+    local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
+    -- 231 = Ground and increased swim speed, 232 = Aquatic, can only be used in Vashj'ir, 254 = Aquatic only
+   return mountTypeID == 231 or mountTypeID == 232 or mountTypeID == 254
 end
 
 -- Function to update spell cache
@@ -84,7 +91,7 @@ function LithStable:GetTrueRandomIndex(max)
 end
 
 -- Random mount selection function
-function LithStable:GetRandomMountExcludingLast(mountList, lastMount, isFlying)
+function LithStable:GetRandomMountExcludingLast(mountList, lastMount, isFlying, isAquatic)
     
     -- Add debug prints to understand our lists
     --print("Mount list size:", #mountList)
@@ -93,11 +100,14 @@ function LithStable:GetRandomMountExcludingLast(mountList, lastMount, isFlying)
 
     local availableFlying = 0
     local availableGround = 0
+    local availableAquatic = 0
 
     -- Count mounts by type
     for _, mountID in ipairs(mountList) do
         if self:IsFlyingMount(mountID) then
             availableFlying = availableFlying + 1
+        elseif self:IsAquaticMount(mountID) then
+            availableAquatic = availableAquatic + 1
         else
             availableGround = availableGround + 1
         end
@@ -112,12 +122,21 @@ function LithStable:GetRandomMountExcludingLast(mountList, lastMount, isFlying)
             end
         end
     end
+
+    -- If we're looking for an aquatic mount and only have one
+    if isAquatic and availableAquatic <= 1 then
+        for _, mountID in ipairs(mountList) do
+            if self:IsAquaticMount(mountID) then
+               return mountID, 1
+            end
+        end
+    end
     
     -- If we're looking for a ground mount and only have one
     if not isFlying and availableGround <= 1 then
         -- Find and return the single ground mount
         for _, mountID in ipairs(mountList) do
-            if not self:IsFlyingMount(mountID) then
+            if not self:IsFlyingMount(mountID) and not self:IsAquaticMount(mountID) then
                 return mountID, 1
             end
         end
@@ -184,6 +203,10 @@ function LithStable:SetLastMount(mountType, mountID)
         self.lastFlyingMount = mountID
         -- Always save to character state
         self.db.char.state.lastFlyingMount = mountID
+    elseif mountType == "aquatic" then
+        self.lastAquaticMount = mountID
+        -- Always save to character state
+        self.db.char.state.lastAquaticMount = mountID
     else
         self.lastGroundMount = mountID
         -- Always save to character state

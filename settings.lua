@@ -5,18 +5,21 @@ local defaults = {
     profile = {
         settings = {
             dismountOnly = false,
-            reoccurring = false
+            reoccurring = false,
+            aquaticBackup = false
         }
     },
     char = {
         useSharedSettings = true,
         settings = {
             dismountOnly = false,
-            reoccurring = false
+            reoccurring = false,
+            aquaticBackup = false
         },
         state = {
             lastFlyingMount = nil,
-            lastGroundMount = nil
+            lastGroundMount = nil,
+            lastAquaticMount = nil
         },
         favorites = {
             mounts = {}
@@ -146,9 +149,9 @@ function LithStable:InitializeSettings()
             dismountOnly = {
                 type = "toggle",
                 name = "If mounted just dismount",
-                desc = "If checked, using the mount command while mounted will only dismount without summoning a new mount",
+                desc = "If checked, using the mount command while mounted will only dismount without summoning a new mount.",
                 width = "full",
-                order = 7,
+                order = 6.1,
                 get = function() 
                     return self.db.char.useSharedSettings 
                         and self.db.profile.settings.dismountOnly 
@@ -162,6 +165,33 @@ function LithStable:InitializeSettings()
                     end
                 end,
             },
+            --[[ --Removed because not all flying mounts can be summoned in water
+            aquaticDescription = {
+                type = "description",
+                name = "If checked, using the mount command while in water will fall back to summon a favorite flying or ground mount if no aquatic mount is available.",
+                order = 6.2,
+                fontSize = "medium",
+            },
+            aquaticBackup = {
+                type = "toggle",
+                name = "Aquatic mount fallback",
+                desc = "If checked, using the mount command while in water will fall back to summon a favorite flying or ground mount if no aquatic mount is available.",
+                width = "full",
+                order = 6.3,
+                get = function() 
+                    return self.db.char.useSharedSettings 
+                        and self.db.profile.settings.aquaticBackup 
+                        or self.db.char.settings.aquaticBackup 
+                end,
+                set = function(_, value)
+                    if self.db.char.useSharedSettings then
+                        self.db.profile.settings.aquaticBackup = value
+                    else
+                        self.db.char.settings.aquaticBackup = value
+                    end
+                    self:UpdateAquaticMountBackup()
+                end,
+            },]]
             spacer1 = {
                 type = "description",
                 name = " ",  -- Empty spacer for layout alignment

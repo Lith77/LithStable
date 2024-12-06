@@ -4,8 +4,10 @@ LithStable = LibStub("AceAddon-3.0"):NewAddon(LithStable, addonName, "AceConsole
 -- State variables
 LithStable.lastFlyingMount = nil
 LithStable.lastGroundMount = nil
+LithStable.lastAquaticMount = nil
 LithStable.pendingMount = nil
 LithStable.pendingMountType = nil
+--LithStable.aquaticMountBackup = false
 
 function LithStable:OnInitialize()
     -- Initialize settings
@@ -14,6 +16,10 @@ function LithStable:OnInitialize()
     -- Load last mount states from character saved variables
     self.lastFlyingMount = self.db.char.state.lastFlyingMount
     self.lastGroundMount = self.db.char.state.lastGroundMount
+    self.lastAquaticMount = self.db.char.state.lastAquaticMount
+
+    -- Initialize aquaticMountBackup
+    --self:UpdateAquaticMountBackup()
 
     -- Register slash commands
     self:RegisterChatCommand("ls", "HandleSlashCommand")
@@ -39,8 +45,19 @@ function LithStable:OnInitialize()
     end
 end
 
+--[[
+function LithStable:UpdateAquaticMountBackup()
+    if self.db.char.useSharedSettings then
+        self.aquaticMountBackup = self.db.profile.settings.aquaticBackup
+    else
+        self.aquaticMountBackup = self.db.char.settings.aquaticBackup
+    end
+end]]
+
 function LithStable:HandleSlashCommand(msg)
-    local command = string.lower(msg)
+    --local command = string.lower(msg)
+    local args = {strsplit(" ", msg)}
+    local command = string.lower(args[1] or "")
     if command == "help" then
         self:printHelp()
     elseif command == "debug" then
@@ -52,14 +69,27 @@ function LithStable:HandleSlashCommand(msg)
     elseif command == "flying" then
         self:SummonRandomMount("flying", true)
     elseif command == "ground" then
-        self:SummonRandomMount("ground", true)
+        self:SummonRandomMount("ground", true)    
+    elseif command == "debugam" then
+        if args[2] then
+            local mountID = tonumber(args[2])
+            if mountID then
+                self:DebugPrintAnyMount(mountID)
+            else
+                print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Invalid mount ID. Please provide a valid number."))
+            end
+        else
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "Usage: /ls debugam [mount_id]"))
+        end
     else
         self:SummonRandomMount(nil, false)
     end
 end
 
+
 -- Main mount summoning function
 function LithStable:SummonRandomMount(rMountType, forceType)
+    
     if not self:CheckCooldown() then
         return
     end
@@ -79,19 +109,24 @@ function LithStable:SummonRandomMount(rMountType, forceType)
 
     local favoriteMounts = {
         ground = {},
-        flying = {}
+        flying = {},
+        aquatic = {}
     }
     local canFly = self:CanFlyInCurrentZone()
+    local isSubmerged = IsSubmerged()
+    local isSwimming = IsSwimming()
     local unusableFavorites = {}
-
     for i = 1, C_MountJournal.GetNumMounts() do
-        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected, mountID = C_MountJournal.GetMountInfoByID(i)
-        if mountID then
+        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, isFactionSpecific, faction, shouldHideOnChar, isCollected, mountID = C_MountJournal.GetMountInfoByID(C_MountJournal.GetDisplayedMountID(i))
+        
+        if mountID and isCollected and isUsable then
             local localUsable, reason = C_MountJournal.GetMountUsabilityByID(mountID, false)
             if isCollected and isFavorite and not shouldHideOnChar then
                 if isUsable and localUsable then
                     if self:IsFlyingMount(mountID) then
                         table.insert(favoriteMounts.flying, mountID)
+                    elseif self:IsAquaticMount(mountID) then
+                        table.insert(favoriteMounts.aquatic, mountID)
                     else
                         table.insert(favoriteMounts.ground, mountID)
                     end
@@ -109,9 +144,37 @@ function LithStable:SummonRandomMount(rMountType, forceType)
         end
     end
 
+    --print("isSubmerged:", isSubmerged)
+    --print("isSwimming:", isSwimming)
+    --print("canFly:", canFly)
+    --print("favoriteMounts.aquatic:", #favoriteMounts.aquatic)
+    --print("favoriteMounts.flying:", #favoriteMounts.flying)
+    --print("favoriteMounts.ground:", #favoriteMounts.ground)
+    --print("self.aquaticMountBackup:", self.aquaticMountBackup)
+
     local mountList
     local isFlying = false
-    if rMountType == "flying" and (canFly or forceType) then
+    local isAquatic = false
+
+    if (isSubmerged or isSwimming) and not forceType then
+        if #favoriteMounts.aquatic > 0 then
+            mountList = favoriteMounts.aquatic
+            isAquatic = true
+        --[[ removed because not all flying mounts can be summoned in water, and no way to know
+        elseif self.aquaticMountBackup and canFly and #favoriteMounts.flying > 0 then
+            mountList = favoriteMounts.flying
+            isFlying = true
+            print("flying")
+        elseif self.aquaticMountBackup and #favoriteMounts.ground > 0 then
+            mountList = favoriteMounts.ground
+            print("ground")]]
+        else
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "No aquatic mounts available."))
+            return
+        end
+        LithStable:SRM(mountList, isFlying, isAquatic);
+        return
+    elseif rMountType == "flying" and (canFly or forceType) then
         if #favoriteMounts.flying > 0 then
             mountList = favoriteMounts.flying
             isFlying = true
@@ -119,8 +182,12 @@ function LithStable:SummonRandomMount(rMountType, forceType)
             mountList = favoriteMounts.ground
             print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "No flying mounts available. Summoning a ground mount instead"))
         end
+        LithStable:SRM(mountList, isFlying, isAquatic);
+        return
     elseif rMountType == "ground" or (rMountType ~= "flying" and not canFly and not forceType) then
         mountList = favoriteMounts.ground
+        LithStable:SRM(mountList, isFlying, isAquatic);
+        return
     else
         if canFly and #favoriteMounts.flying > 0 then
             mountList = favoriteMounts.flying
@@ -128,26 +195,35 @@ function LithStable:SummonRandomMount(rMountType, forceType)
         else
             mountList = favoriteMounts.ground
         end
+        LithStable:SRM(mountList, isFlying, isAquatic);
+        return
     end
+end
 
+function LithStable:SRM(mountList, isFlying, isAquatic)
     if #mountList > 0 then
         local selectedMount, selectedIndex
         if isFlying then
-            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("flying"), true)
+            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("flying"), true, false)
+        elseif isAquatic then
+            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("aquatic"), false, true)
         else
-            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("ground"), false)
+            selectedMount, selectedIndex = self:GetRandomMountExcludingLast(mountList, self:GetLastMount("ground"), false, false)
         end
         
         local actualIsFlying = self:IsFlyingMount(selectedMount)
+        local actualIsAquatic = self:IsAquaticMount(selectedMount)
         
         self.pendingMount = selectedMount
-        self.pendingMountType = actualIsFlying and "flying" or "ground"
-        if selectedMount == self.lastFlyingMount or self.lastGroundMount then
+        self.pendingMountType = actualIsFlying and "flying" or (actualIsAquatic and "aquatic" or "ground")
+        
+        if selectedMount == self.lastFlyingMount or self.lastGroundMount or self.lastAquaticMount then
             C_Timer.After(0.3, function()
                 C_MountJournal.SummonByID(selectedMount)
             end)
             return
         end
+
         C_MountJournal.SummonByID(selectedMount)
     else
         print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "You have no suitable favorite mounts available."))
@@ -212,7 +288,7 @@ mountEventFrame:SetScript("OnEvent", function(self, event)
         end
         
         for i = 1, C_MountJournal.GetNumMounts() do
-            local _, _, _, _, _, _, isFavorite, _, _, _, _, mountID = C_MountJournal.GetMountInfoByID(i)
+            local _, _, _, _, _, _, isFavorite, _, _, _, _, mountID = C_MountJournal.GetMountInfoByID(C_MountJournal.GetDisplayedMountID(i))
             if mountID then
                 LithStable.db.char.favorites.mounts[mountID] = isFavorite or nil
             end
@@ -221,7 +297,7 @@ mountEventFrame:SetScript("OnEvent", function(self, event)
         if IsMounted() and LithStable.pendingMount then
             local activeMount = nil
             for i = 1, C_MountJournal.GetNumMounts() do
-                local _, _, _, isActive, _, _, _, _, _, _, _, mountID = C_MountJournal.GetMountInfoByID(i)
+                local _, _, _, isActive, _, _, _, _, _, _, _, mountID = C_MountJournal.GetMountInfoByID(C_MountJournal.GetDisplayedMountID(i))
                 if isActive then
                     activeMount = mountID
                     break
@@ -230,8 +306,9 @@ mountEventFrame:SetScript("OnEvent", function(self, event)
             
             if activeMount == LithStable.pendingMount then
                 local isFlying = LithStable:IsFlyingMount(LithStable.pendingMount)
+                local isAquatic = LithStable:IsAquaticMount(LithStable.pendingMount)
                 -- Always save to character specific state
-                LithStable:SetLastMount(isFlying and "flying" or "ground", LithStable.pendingMount)
+                LithStable:SetLastMount(isFlying and "flying" or isAquatic and "aquatic" or "ground", LithStable.pendingMount)
             end
         end
         

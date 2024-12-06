@@ -2,7 +2,7 @@
 ## Title: |cFF8000FFLith|rStable
 ## Notes: For when choosing a mount is harder than downing Deathwing. Let RNG be your Dragon Soul!
 ## Author: Lith
-## Version: 1.0.4
+## Version: 1.0.5
 ## SavedVariables: LithStableDB
 
 # Libraries (embedded)
