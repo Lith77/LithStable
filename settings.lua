@@ -93,6 +93,10 @@ function LithStable:InitializeSettings()
 
     -- Make sure char data exists
     local charKey = UnitName("player") .. " - " .. GetRealmName()
+    -- Ensure LithStableDB.char exists before accessing it
+    if not LithStableDB.char then
+        LithStableDB.char = {}
+    end
     LithStableDB.profileKeys[charKey] = "Default"
     
     if not LithStableDB.char[charKey] then
@@ -314,8 +318,6 @@ function LithStable:InitializeSettings()
         self.db.char.favorites.mounts = {}
         self:CopyCurrentFavoritesToChar()
     end
-
-    print("|cFF8000FFLith|r|cffffffffStable|r: |cFFBCCF02loaded")
 end
 
 -- Helper function to copy current favorites to character-specific list

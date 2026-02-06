@@ -139,3 +139,27 @@ function LithStable:DebugPrintAnyMount(spellID)
     end
     print("---------------------------------------")
 end
+
+
+function LithStable:DebugMountTypes()
+    print("Analyzing all mount types...")
+    local mountTypeCounts = {}
+    
+    for i = 1, C_MountJournal.GetNumMounts() do
+        local _, _, _, _, _, _, _, _, _, _, isCollected, mountID = C_MountJournal.GetMountInfoByID(C_MountJournal.GetDisplayedMountID(i))
+        
+        if mountID and isCollected then
+            local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
+            
+            if not mountTypeCounts[mountTypeID] then
+                mountTypeCounts[mountTypeID] = 0
+            end
+            mountTypeCounts[mountTypeID] = mountTypeCounts[mountTypeID] + 1
+        end
+    end
+    
+    print("Mount Type Counts:")
+    for typeID, count in pairs(mountTypeCounts) do
+        print("Type", typeID, ":", count, "mounts")
+    end
+end

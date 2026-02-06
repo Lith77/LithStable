@@ -62,6 +62,8 @@ function LithStable:HandleSlashCommand(msg)
         self:printHelp()
     elseif command == "debug" then
         self:DebugPrintFavorites()
+    elseif command == "debugtypes" then
+        self:DebugMountTypes()
     elseif command == "last" then
         self:DebugPrintLastMounts()
     elseif command == "config" or command == "options" then
@@ -123,11 +125,19 @@ function LithStable:SummonRandomMount(rMountType, forceType)
             local localUsable, reason = C_MountJournal.GetMountUsabilityByID(mountID, false)
             if isCollected and isFavorite and not shouldHideOnChar then
                 if isUsable and localUsable then
-                    if self:IsFlyingMount(mountID) then
+                    -- Get proper mount categorization
+                    local categories = self:CategorizeMount(mountID)
+                    
+                    -- Add to appropriate lists based on categories
+                    if categories.flying then
                         table.insert(favoriteMounts.flying, mountID)
-                    elseif self:IsAquaticMount(mountID) then
+                    end
+                    
+                    if categories.aquatic then
                         table.insert(favoriteMounts.aquatic, mountID)
-                    else
+                    end
+                    
+                    if categories.ground then
                         table.insert(favoriteMounts.ground, mountID)
                     end
                 elseif localUsable then
@@ -178,6 +188,7 @@ function LithStable:SummonRandomMount(rMountType, forceType)
         if #favoriteMounts.flying > 0 then
             mountList = favoriteMounts.flying
             isFlying = true
+            --print("canFly:", canFly, "forceType:", forceType)
         else
             mountList = favoriteMounts.ground
             print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "No flying mounts available. Summoning a ground mount instead"))
@@ -226,7 +237,11 @@ function LithStable:SRM(mountList, isFlying, isAquatic)
 
         C_MountJournal.SummonByID(selectedMount)
     else
-        print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "You have no suitable favorite mounts available."))
+        if IsIndoors() then
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "You are indoors, no mounts available."))
+        else
+            print(format('|cFF8000FF%s|r|cffffffff%s|r %s', 'Lith', 'Stable:', "You have no suitable favorite mounts available."))
+        end
     end
 end
 
@@ -263,11 +278,21 @@ function LithStable:ToggleFavorite()
 end
 
 -- Event frame for spell learning
+
 local spellLearnFrame = CreateFrame("Frame")
-spellLearnFrame:RegisterEvent("LEARNED_SPELL_IN_TAB")
-spellLearnFrame:SetScript("OnEvent", function(self, event, newSpellID)
+if WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC then
+    spellLearnFrame:RegisterEvent("LEARNED_SPELL_IN_TAB") 
+    spellLearnFrame:SetScript("OnEvent", function(self, event, newSpellID)
     LithStable:UpdateSpellCache(newSpellID)
-end)
+    end)
+end
+if WOW_PROJECT_ID == WOW_PROJECT_MAINLINE then    
+    spellLearnFrame:RegisterEvent("SPELLS_CHANGED")
+    spellLearnFrame:SetScript("OnEvent", function()
+        LithStable:NotifySpellStateChanged()
+    end)
+end
+
 
 local mountEventFrame = CreateFrame("Frame")
 mountEventFrame:RegisterEvent("MOUNT_JOURNAL_USABILITY_CHANGED")

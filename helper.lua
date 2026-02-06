@@ -4,6 +4,11 @@ local addonName, LithStable = ...
 local lastMountAttempt = 0
 local MOUNT_COOLDOWN = 0.25
 local spellCache = {}
+local TRACKED_SPELLS = {
+    [33391] = true,   -- Journeyman Riding
+    [34090] = true,   -- Expert Riding (flying)
+    [90265] = true -- Master Riding (flying)
+}
 
 -- Helper function to get mount name
 function LithStable:GetMountName(mountID)
@@ -12,18 +17,89 @@ function LithStable:GetMountName(mountID)
     return name or "Unknown"
 end
 
+function LithStable:CategorizeMount(mountID)
+    -- Get the mount type ID
+    local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
+    
+    local categories = {}
+
+    -- Define categories based on MountTypeID
+    local flyingTypes = {247, 248, 402, 407, 424, 436}
+    local aquaticTypes = {231, 232, 254, 407, 412, 436} -- Includes Wavewhisker (436), Deepstar Polyp (407) and Otterworldly Ottuk Carrier (407) which is both flying and aquatic
+    local groundTypes = {229, 230, 241, 269, 284, 398, 408, 412}
+    
+    -- Check if the mount type is in the flying categories
+    local isFlying = false
+    for _, typeID in ipairs(flyingTypes) do
+        if mountTypeID == typeID then
+            isFlying = true
+            --print("Mount ID:", mountID, "is FLYING")
+            break
+        end
+    end
+    
+    -- Check if the mount type is in the aquatic categories
+    local isAquatic = false
+    for _, typeID in ipairs(aquaticTypes) do
+        if mountTypeID == typeID then
+            isAquatic = true
+            --print("Mount ID:", mountID, "is AQUATIC")
+            break
+        end
+    end
+    
+    -- Assign categories based on findings
+    if isFlying then 
+        categories.flying = true 
+    end
+    
+    if isAquatic then 
+        categories.aquatic = true 
+    end
+    
+    -- If not flying or aquatic, it's a ground mount
+    if not isFlying and not isAquatic then
+        categories.ground = true
+        --print("Mount ID:", mountID, "is GROUND")
+    end
+    
+    return categories
+end
+
+function LithStable:IsFlyingMount(mountID)
+    local categories = self:CategorizeMount(mountID)
+    return categories.flying == true
+end
+
+function LithStable:IsAquaticMount(mountID)
+    local categories = self:CategorizeMount(mountID)
+    return categories.aquatic == true
+end
+
+--[[
 -- Helper function to determine if a mount is a flying mount
 function LithStable:IsFlyingMount(mountID)
     local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
-    -- 248 = Pure Flying, 247 = Flying/Ground, 402 = Dragonriding
-    return mountTypeID == 229 or mountTypeID == 238 or mountTypeID == 248 or mountTypeID == 247 or mountTypeID == 402 or mountTypeID == 436
+    -- 248 = Pure Flying, 247 = Flying/Ground, 402 = Dragonriding, 424 = Dragonriding mounts, including mounts that have dragonriding animations but are not yet enabled for dragonriding
+    return mountTypeID == 229 or mountTypeID == 238 or mountTypeID == 248 or mountTypeID == 247 or mountTypeID == 402 or mountTypeID == 436 or mountTypeID == 424
 end
 
 -- Helper function to determine if a mount is a water mount
 function LithStable:IsAquaticMount(mountID)
     local _, _, _, _, mountTypeID = C_MountJournal.GetMountInfoExtraByID(mountID)
     -- 231 = Ground and increased swim speed, 232 = Aquatic, can only be used in Vashj'ir, 254 = Aquatic only
-   return mountTypeID == 231 or mountTypeID == 232 or mountTypeID == 254
+   return mountTypeID == 231 or mountTypeID == 232 or mountTypeID == 254 or mountTypeID == 436
+end
+]]--
+
+function LithStable:NotifySpellStateChanged()
+    for spellID in pairs(TRACKED_SPELLS) do
+        if IsSpellKnown(spellID) and not spellCache[spellID] then
+            spellCache[spellID] = true
+            self:UpdateSpellCache(spellID)
+        end
+    end
+    MountJournal.SummonRandomFavoriteSpellFrame:Hide();
 end
 
 -- Function to update spell cache

@@ -1,4 +1,6 @@
 LithStable, Summons a random favorite mount
+V1.1.0:
+	- Now Retail & Classic is supported
 V1.0.5:
 	- Fix for Cataclysm mounts
 	- Added support for aquatic mounts, so if in water and you have a aquatic favorite mount that can be used in that area it will summon that, as long as you don't use the Flying or Ground specific slash command or keybind.

@@ -2,12 +2,13 @@ local addonName, LithStable = ...
 
 -- Function to initialize UI elements
 function LithStable:InitializeUI()
-    if not MountJournal then return end
+    if not MountJournal then print("MountJournal not found") return end
+    --print("InitializeUI LithStable")
 
     -- Random Favorite Mount Button
     local randomButton = CreateFrame("Button", "LithStableRandomMountButton", MountJournal, "UIPanelButtonTemplate")
     randomButton:SetSize(32, 32)
-    randomButton:SetPoint("TOPRIGHT", MountJournal, "TOPRIGHT", -7, -25)
+    randomButton:SetPoint("TOPRIGHT", MountJournal, "TOPRIGHT", -8, -25)
     
     local randomButtonTexture = randomButton:CreateTexture(nil, "ARTWORK")
     randomButtonTexture:SetTexture("Interface\\AddOns\\LithStable\\images\\icon-summon.tga")
@@ -50,8 +51,11 @@ end
 -- Hook the UI initialization
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
+frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(self, event, loadedAddonName)
-    if loadedAddonName == "Blizzard_Collections" then
+    if MountJournal then
+        print("|cFF8000FFLith|r|cffffffffStable|r: |cFFBCCF02loaded")
         LithStable:InitializeUI()
+        self:UnregisterAllEvents()
     end
 end)
