@@ -1,4 +1,4 @@
-## Interface: 110105, 120000
+## Interface: 50503, 110105, 120000
 ## Title: |cFF8000FFLith|rStable
 ## Notes: For when choosing a mount is harder than downing Deathwing. Let RNG be your Dragon Soul!
 ## Author: Lith
